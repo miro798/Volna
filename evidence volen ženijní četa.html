@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ženijní četa</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #e8f5e9;
+            flex-direction: column;
+        }
+
+        #container {
+            text-align: center;
+        }
+
+        table, th, td {
+            border: 1px solid #388e3c;
+            border-collapse: collapse;
+            padding: 10px;
+            margin: 20px auto;
+            background-color: #f1f8e9;
+        }
+
+        th {
+            background-color: #66bb6a;
+            color: white;
+        }
+
+        td {
+            text-align: center;
+            height: 30px;
+        }
+
+        button {
+            background-color: #388e3c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #2e7d32;
+        }
+
+        #detailModal {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70%;
+            max-height: 80%;
+            overflow-y: auto;
+            background-color: #f1f8e9;
+            border: 2px solid #388e3c;
+            padding: 20px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>Ženijní četa</h1>
+        <button onclick="addEmployee()">Přidat zaměstnance</button>
+
+        <table id="employeeTable">
+            <thead>
+                <tr>
+                    <th>Jméno a příjmení</th>
+                    <th>Náhradní volno</th>
+                    <th>Úprava pracovní doby</th>
+                    <th>Řádná dovolená</th>
+                    <th>Celkem hodin</th>
+                    
+                </tr>
+            </thead>
+            <tbody id="employeeTableBody"></tbody>
+        </table>
+    </div>
+
+    <div id="detailModal" style="display: none;">
+        <h2 id="detailTitle"></h2>
+        <table id="detailTable">
+            <tr>
+                <th>Číslo rozkazu</th>
+                <th>Náležitost ze dne</th>
+                <th>Počet hodin</th>
+                <th>Čerpáno</th>
+                <th>Zůstatek</th>
+            </tr>
+        </table>
+        <button onclick="addDetailRow()">Přidat náležitost</button>
+        <p>Celkem zbývá: <span id="remainingHours">0</span> hodin</p>
+        <button onclick="saveDetails()">Uložit</button>
+        <button onclick="closeDetailModal()">Zavřít</button>
+    </div>
+
+
+
+
+    <script>
+        let employees = JSON.parse(localStorage.getItem('employees')) || [];
+        let currentEmployeeIndex = null;
+        let currentType = '';
+
+        function saveEmployees() {
+            localStorage.setItem('employees', JSON.stringify(employees));
+        }
+
+        function renderTable() {
+            const tableBody = document.getElementById("employeeTableBody");
+            tableBody.innerHTML = "";
+
+            employees.forEach((employee, index) => {
+                const row = tableBody.insertRow();
+                row.insertCell(0).innerText = employee.name;
+
+                const nvCell = row.insertCell(1);
+                nvCell.innerText = employee.nv;
+                nvCell.onclick = () => openDetailModal(index, 'Náhradní volno');
+
+                const updCell = row.insertCell(2);
+                updCell.innerText = employee.upd;
+                updCell.onclick = () => openDetailModal(index, 'Úprava pracovní doby');
+
+                const rdCell = row.insertCell(3);
+                rdCell.innerText = employee.rd;
+                rdCell.onclick = () => openDetailModal(index, 'Řádná dovolená');
+
+                row.insertCell(4).innerText = employee.total;
+
+                const deleteButton = document.createElement("button");
+                deleteButton.innerText = "Odstranit";
+                deleteButton.onclick = () => removeEmployee(index);
+                row.insertCell(5).appendChild(deleteButton);
+            });
+        }
+
+        function removeEmployee(index) {
+            if (confirm("Opravdu chcete odstranit tohoto zaměstnance?")) {
+                employees.splice(index, 1);
+                saveEmployees();
+                renderTable();
+            }
+        }
+
+        function addEmployee() {
+            const name = prompt("Zadejte jméno a příjmení zaměstnance:");
+            if (name) {
+                employees.push({name, nv: 0, upd: 0, rd: 0, total: 0, details: {nv: [], upd: [], rd: []}});
+                saveEmployees();
+                renderTable();
+            }
+        }
+
+        function openDetailModal(index, type) {
+            currentEmployeeIndex = index;
+            currentType = type;
+            const employee = employees[index];
+            document.getElementById('detailTitle').innerText = `${employee.name} - ${type}`;
+            document.getElementById('detailModal').style.display = 'flex';
+            document.getElementById('detailTable').innerHTML = `
+                <tr>
+                    <th>Číslo rozkazu</th>
+                    <th>Náležitost ze dne</th>
+                    <th>Počet hodin</th>
+                    <th>Čerpáno</th>
+                    <th>Zůstatek</th>
+                </tr>
+            `;
+
+            const details = employee.details[type.toLowerCase().replace(" ", "")] || [];
+
+            details.forEach((detail, i) => {
+                const row = document.getElementById('detailTable').insertRow();
+                row.insertCell(0).innerHTML = `<input type="text" value="${detail.command || ''}">`;
+                row.insertCell(1).innerHTML = `<input type="date" value="${detail.date || ''}">`;
+                row.insertCell(2).innerHTML = `<input type="number" value="${detail.hours || ''}">`;
+
+                const usedCell = row.insertCell(3);
+                let totalUsedHours = 0;
+                detail.used.forEach((use, j) => {
+                    const div = document.createElement('div');
+                    div.innerHTML = `
+                        <input type="date" value="${use.date || ''}">
+                        <input type="number" value="${use.hours || ''}">
+                        <button onclick="removeUsage(${i}, ${j})">Odebrat</button>
+                    `;
+                    totalUsedHours += use.hours;
+                    usedCell.appendChild(div);
+                });
+
+                const addUsageButton = document.createElement('button');
+                addUsageButton.innerText = 'Přidat čerpání';
+                addUsageButton.onclick = () => addUsage(i);
+                usedCell.appendChild(addUsageButton);
+
+                const remainingCell = row.insertCell(4);
+                const remainingHours = detail.hours - totalUsedHours;
+                remainingCell.innerText = remainingHours;
+            });
+
+            document.getElementById('remainingHours').innerText = employee[type === 'Náhradní volno' ? 'nv' : type === 'Úprava pracovní doby' ? 'upd' : 'rd'];
+        }
+
+        function addDetailRow() {
+            const table = document.getElementById('detailTable');
+            const row = table.insertRow();
+
+            row.insertCell(0).innerHTML = `<input type="text" placeholder="Číslo rozkazu">`;
+            row.insertCell(1).innerHTML = `<input type="date">`;
+            row.insertCell(2).innerHTML = `<input type="number" placeholder="Počet hodin">`;
+
+            const usedCell = row.insertCell(3);
+            const div = document.createElement('div');
+            div.innerHTML = `
+                <input type="date" placeholder="Čerpáno dne">
+                <input type="number" placeholder="Čerpáno hodin">
+                <button onclick="removeUsage(-1, -1)">Odebrat</button>
+            `;
+            usedCell.appendChild(div);
+            row.insertCell(4).innerText = '0';
+        }
+
+        function addUsage(detailIndex) {
+            const row = document.getElementById('detailTable').rows[detailIndex + 1];
+            const div = document.createElement('div');
+            div.innerHTML = `
+                <input type="date" placeholder="Čerpáno dne">
+                <input type="number" placeholder="Čerpáno hodin">
+                <button onclick="removeUsage(detailIndex, -1)">Odebrat</button>
+            `;
+            row.cells[3].appendChild(div);
+        }
+
+        function saveDetails() {
+            const employee = employees[currentEmployeeIndex];
+            const details = [];
+
+            const rows = document.querySelectorAll("#detailTable tr");
+            for (let i = 1; i < rows.length; i++) {
+                const cells = rows[i].cells;
+                const command = cells[0].querySelector('input').value;
+                const date = cells[1].querySelector('input').value;
+                const hours = parseFloat(cells[2].querySelector('input').value) || 0;
+
+                const used = [];
+                const usedDivs = cells[3].querySelectorAll('div');
+                let totalUsedHours = 0;
+                usedDivs.forEach(div => {
+                    const useDate = div.querySelector('input[type="date"]').value;
+                    const useHours = parseFloat(div.querySelector('input[type="number"]').value) || 0;
+                    used.push({date: useDate, hours: useHours});
+                    totalUsedHours += useHours;
+                });
+
+                details.push({command, date, hours, used});
+
+                const remainingHours = hours - totalUsedHours;
+                cells[4].innerText = remainingHours;
+            }
+
+            employee.details[currentType.toLowerCase().replace(" ", "")] = details;
+
+            employee[currentType === 'Náhradní volno' ? 'nv' : currentType === 'Úprava pracovní doby' ? 'upd' : 'rd'] = details.reduce((sum, detail) => {
+                const usedHours = detail.used.reduce((usedSum, use) => usedSum + use.hours, 0);
+                return sum + detail.hours - usedHours;
+            }, 0);
+
+            employee.total = employee.nv + employee.upd + employee.rd;
+
+            saveEmployees();
+            renderTable();
+            closeDetailModal();
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detailModal').style.display = 'none';
+        }
+
+        function removeUsage(detailIndex, usageIndex) {
+            if (detailIndex === -1) return;
+
+            const employee = employees[currentEmployeeIndex];
+            const details = employee.details[currentType.toLowerCase().replace(" ", "")];
+
+            if (usageIndex !== -1) {
+                details[detailIndex].used.splice(usageIndex, 1);
+            } else {
+                details.splice(detailIndex, 1);
+            }
+
+            saveEmployees();
+            openDetailModal(currentEmployeeIndex, currentType);
+        }
+
+        window.onload = renderTable;
+    </script>
+
+
+</body>
+</html>
